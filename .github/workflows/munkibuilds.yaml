@@ -12,8 +12,6 @@ jobs:
     steps:
     - uses: actions/checkout@v1
 
-    - name: 
-
     - name: Setup
       run: ./code/tools/ci/setup
       env:
