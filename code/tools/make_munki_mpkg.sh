@@ -15,6 +15,7 @@ CONFPKG=""
 # add this number to Git revision index to get "build" number
 # consistent with old SVN repo
 MAGICNUMBER=482
+VERBOSE=0
 
 # try to automagically find munki source root
 TOOLSDIR=`dirname $0`
@@ -32,8 +33,9 @@ fi
 
 usage() {
     cat <<EOF
-Usage: `basename $0` [-i id] [-r root] [-o dir] [-c package] [-s cert]"
+Usage: `basename $0` [-v 1] [-i id] [-r root] [-o dir] [-c package] [-s cert]"
 
+    -v 1        Enable verbose logging (currently just displays xcodebuild output)
     -i id       Set the base package bundle ID
     -r root     Set the munki source root
     -o dir      Set the output directory
@@ -47,9 +49,12 @@ EOF
 }
 
 
-while getopts "i:r:o:c:s:S:h" option
+while getopts "v:i:r:o:c:s:S:h" option
 do
     case $option in
+        "v")
+            VERBOSE=1
+            ;;
         "i")
             PKGID="$OPTARG"
             ;;
@@ -92,6 +97,11 @@ fi
 if [ ! -d "$OUTPUTDIR" ]; then
     echo "Please set the output directory" 1>&2
     exit 1
+fi
+
+xcodebuild_out=/dev/null
+if [ $VERBOSE -eq 1 ]; then
+    xcodebuild_out=/dev/stdout
 fi
 
 # Sanity checks.
@@ -192,8 +202,8 @@ echo
 # Build Managed Software Center.
 echo "Building Managed Software Update.xcodeproj..."
 pushd "$MUNKIROOT/code/apps/Managed Software Center" > /dev/null
-/usr/bin/xcodebuild -project "Managed Software Center.xcodeproj" -alltargets clean > /dev/null
-/usr/bin/xcodebuild -project "Managed Software Center.xcodeproj" -alltargets build > /dev/null
+/usr/bin/xcodebuild -project "Managed Software Center.xcodeproj" -alltargets clean > "$xcodebuild_out"
+/usr/bin/xcodebuild -project "Managed Software Center.xcodeproj" -alltargets build > "$xcodebuild_out"
 XCODEBUILD_RESULT="$?"
 popd > /dev/null
 if [ "$XCODEBUILD_RESULT" -ne 0 ]; then
@@ -214,8 +224,8 @@ fi
 # Build MunkiStatus
 echo "Building MunkiStatus.xcodeproj..."
 pushd "$MUNKIROOT/code/apps/MunkiStatus" > /dev/null
-/usr/bin/xcodebuild -project "MunkiStatus.xcodeproj" -alltargets clean > /dev/null
-/usr/bin/xcodebuild -project "MunkiStatus.xcodeproj" -alltargets build > /dev/null
+/usr/bin/xcodebuild -project "MunkiStatus.xcodeproj" -alltargets clean > "$xcodebuild_out"
+/usr/bin/xcodebuild -project "MunkiStatus.xcodeproj" -alltargets build > "$xcodebuild_out"
 XCODEBUILD_RESULT="$?"
 popd > /dev/null
 if [ "$XCODEBUILD_RESULT" -ne 0 ]; then
@@ -236,8 +246,8 @@ fi
 # Build munki-notifier
 echo "Building munki-notifier.xcodeproj..."
 pushd "$MUNKIROOT/code/apps/munki-notifier" > /dev/null
-/usr/bin/xcodebuild -project "munki-notifier.xcodeproj" -alltargets clean > /dev/null
-/usr/bin/xcodebuild -project "munki-notifier.xcodeproj" -alltargets build > /dev/null
+/usr/bin/xcodebuild -project "munki-notifier.xcodeproj" -alltargets clean > "$xcodebuild_out"
+/usr/bin/xcodebuild -project "munki-notifier.xcodeproj" -alltargets build > "$xcodebuild_out"
 XCODEBUILD_RESULT="$?"
 popd > /dev/null
 if [ "$XCODEBUILD_RESULT" -ne 0 ]; then
