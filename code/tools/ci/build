@@ -71,7 +71,7 @@ class MunkiBuildSession(object):
                 ['/usr/bin/git', 'rev-parse', '--abbrev-ref', 'HEAD']).strip()
 
     def build_pkg(self):
-        build_cmd = ['code/tools/make_munki_mpkg.sh', '-v', '1']
+        build_cmd = ['code/tools/make_munki_mpkg.sh', '-v']
         self.log.info("Executing %s", build_cmd)
         proc = Popen(build_cmd, stdout=PIPE, stderr=PIPE)
         out, err = proc.communicate()

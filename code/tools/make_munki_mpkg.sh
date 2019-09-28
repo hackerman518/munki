@@ -33,9 +33,9 @@ fi
 
 usage() {
     cat <<EOF
-Usage: `basename $0` [-v 1] [-i id] [-r root] [-o dir] [-c package] [-s cert]"
+Usage: `basename $0` [-v] [-i id] [-r root] [-o dir] [-c package] [-s cert]"
 
-    -v 1        Enable verbose logging (currently just displays xcodebuild output)
+    -v          Enable verbose logging (currently just displays xcodebuild output)
     -i id       Set the base package bundle ID
     -r root     Set the munki source root
     -o dir      Set the output directory
@@ -49,7 +49,7 @@ EOF
 }
 
 
-while getopts "v:i:r:o:c:s:S:h" option
+while getopts "vi:r:o:c:s:S:h" option
 do
     case $option in
         "v")
