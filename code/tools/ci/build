@@ -183,7 +183,7 @@ SHA-256: ${sha256}""")
                       ', '.join(os.listdir(self.artifacts_dir)))
 
     def deploy(self, ssh_id_file):
-        remote_dst_root = '/var/www/munkibuilds.org/1.testing'
+        remote_dst_root = '/var/www/munkibuilds.org'
 
         # nuke the root path for this version/branch tree
         tree_root = os.path.join(self.artifacts_dir, 'tree')
