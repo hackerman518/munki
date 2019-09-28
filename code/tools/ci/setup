@@ -1,0 +1,26 @@
+#!/bin/bash -eu
+
+HOST=munkibuilds.org
+
+# print out some status info about the build environment for diagnostic purposes.
+system_profiler SPHardwareDataType
+/usr/bin/find /Applications -maxdepth 1 -iname '*xcode*'
+xcodebuild -showsdks
+
+# Xcode selection
+sudo xcode-select -s /Applications/Xcode_10.3.app/Contents/Developer
+
+# SSH setup
+deploy_key_file=munkibuilds_ssh_deploy_key
+mkdir -p ~/.ssh
+ssh-keyscan $HOST >> ~/.ssh/known_hosts
+echo "$MUNKIBUILDS_SSH_DEPLOY_KEY" > "${deploy_key_file}"
+chmod 600 "${deploy_key_file}"
+# test the key
+ssh -i "${deploy_key_file}" -T "jenkins-ssh@${HOST}" exit
+
+# install dependencies
+pip install \
+	--disable-pip-version-check \
+	--user \
+	-r code/tools/ci/requirements.txt
