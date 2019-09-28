@@ -20,10 +20,12 @@ SSH_HOST = 'jenkins-ssh@munkibuilds.org'
 ARTIFACTS_DIR = 'artifacts'
 LOG_LEVEL = logging.INFO
 
-# Environment variables for build info which are injected by CI platforms
+# Environment variables for build info which are injected by CI platforms.
+# Currently a two-length tuple of var names for (commit, branch)
 CI_BUILD_VARS = {
     'travis': ('TRAVIS_COMMIT', 'TRAVIS_BRANCH'),
     'azure': ('BUILD_SOURCEVERSION', 'BUILD_SOURCEBRANCHNAME'),
+    'github': ('GITHUB_SHA', 'GITHUB_REF'),
 }
 
 
@@ -53,6 +55,15 @@ class MunkiBuildSession(object):
                 continue
             self.commit = os.environ[ci_vars[0]]
             self.branch = os.environ[ci_vars[1]]
+
+            # GitHub actions exposes the branch name only of the form 'refs/heads/branchname'
+            if ci_name == 'github':
+                branch_match = re.match(r'^.*\/.*\/(?P<branchname>.*)$', self.branch)
+                if not branch_match:
+                    self.log.error("Failed to extract a branch name from GitHub "
+                                   "ref environment variable %s" % ci_vars[1])
+                self.branch = branch_match.group('branchname')
+
         if not self.commit:
             self.commit = check_output(
                 ['/usr/bin/git', 'rev-parse', 'HEAD']).strip()
