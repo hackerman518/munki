@@ -1,0 +1,251 @@
+#!/usr/bin/env python
+
+# pylint: disable=import-error,line-too-long,locally-disabled,invalid-name,missing-docstring
+
+import argparse
+import hashlib
+import logging
+import os
+import re
+import shutil
+import sys
+
+from string import Template
+from subprocess import PIPE
+from subprocess import Popen
+from subprocess import check_output
+
+BUILD_LOG = ""
+SSH_HOST = 'jenkins-ssh@munkibuilds.org'
+ARTIFACTS_DIR = 'artifacts'
+LOG_LEVEL = logging.INFO
+
+# Environment variables for build info which are injected by CI platforms
+CI_BUILD_VARS = {
+    'travis': ('TRAVIS_COMMIT', 'TRAVIS_BRANCH'),
+    'azure': ('BUILD_SOURCEVERSION', 'BUILD_SOURCEBRANCHNAME'),
+}
+
+
+class MunkiBuildSession(object):
+    def __init__(self):
+        self.sha256 = ""
+        self.built_pkg = ""
+        self.build_log = ""
+        self.pkg_components = {}
+        self.readme_text = ""
+        self.dist_pkg_version = ""
+        self.artifacts_dir = ARTIFACTS_DIR
+        self.artifact_list = []
+        self.commit = ""
+        self.branch = ""
+
+        # set up logging
+        self.log = logging.getLogger()
+        logging.basicConfig(level=LOG_LEVEL,
+                            format="%(levelname)s - %(asctime)s - %(funcName)s:%(lineno)d - %(message)s")
+
+        # store commit/branch info by iterating through known CI vars
+        # (we assume there would only ever be one of these groups set,
+        # since Azure wouldn't set "TRAVIS_" or "JENKINS_" etc. vars)
+        for ci_name, ci_vars in CI_BUILD_VARS.iteritems():
+            if not os.environ.get(ci_vars[0]):
+                continue
+            self.commit = os.environ[ci_vars[0]]
+            self.branch = os.environ[ci_vars[1]]
+        if not self.commit:
+            self.commit = check_output(
+                ['/usr/bin/git', 'rev-parse', 'HEAD']).strip()
+            self.branch = check_output(
+                ['/usr/bin/git', 'rev-parse', '--abbrev-ref', 'HEAD']).strip()
+
+    def build_pkg(self):
+        build_cmd = ['code/tools/make_munki_mpkg.sh', '-v']
+        self.log.info("Executing %s", build_cmd)
+        proc = Popen(build_cmd, stdout=PIPE, stderr=PIPE)
+        out, err = proc.communicate()
+        if proc.returncode:
+            self.log.error('make_munki_mpkg.sh failed with code %s, stderr: %s',
+                           proc.returncode, err)
+            self.log.info("Dump of command output:\n\n%s", out)
+            sys.exit(1)
+        self.build_log = out
+
+        pkg_path_match = re.search(
+            r'Distribution package created at (.*munkitools-(.*)\.pkg).*',
+            self.build_log)
+        if not pkg_path_match:
+            self.log.error("Failed to extract the pkg path from the log output, "
+                           "installer log output follows:\n\n%s", self.build_log)
+            sys.exit(1)
+        self.built_pkg = pkg_path_match.groups()[0]
+        self.dist_pkg_version = pkg_path_match.groups()[1]
+
+        # post-build tasks
+        self.extract_pkg_components()
+        self.hash_pkg()
+
+    def extract_pkg_components(self):
+        for line in self.build_log.splitlines():
+            match = re.match(r'^Packaging (?P<pkg>.*?)-(?P<ver>[0-9\.]+)\.pkg$',
+                             line)
+            if match:
+                comp_name = match.group('pkg').replace('munkitools_', '')
+                self.pkg_components[comp_name] = match.group('ver')
+        if len(self.pkg_components.keys()) < 5:
+            sys.exit("Expected at least 5 pkg components in the built pkg: "
+                     "%s" % self.pkg_components)
+
+    def hash_pkg(self):
+        self.sha256 = hashlib.sha256(
+            open(self.built_pkg, 'rb').read()).hexdigest()
+
+    def render_readme_template(self):
+        '''Render the README.html that we copy over to each build's directory
+        which Apache's dir listing function appends to the html'''
+
+        readme_tmpl = Template("""${gitlog}
+
+
+
+Committed in <a href="https://github.com/munki/munki/commit/${commit}">${commit}</a> on GitHub
+
+Munki component versions:
+
+${components}
+
+SHA-256: ${sha256}""")
+
+        # Log
+        gitlog = check_output([
+            '/usr/bin/git',
+            'log',
+            '-n', '1',
+            '--format=%an - %ad\n\n%B'])
+
+        # Package components
+        components = self.pkg_components
+        components_text = ""
+        for pkg, ver in components.iteritems():
+            components_text += "%s: %s\n" % (pkg, ver)
+
+        templated = readme_tmpl.safe_substitute(
+            gitlog=gitlog,
+            commit=self.commit,
+            components=components_text,
+            sha256=self.sha256)
+
+        self.readme_text = templated
+        try:
+            import textile
+            self.readme_text = textile.textile(templated)
+        except ImportError:
+            self.log.warn("textile pip package not available! Still going to "
+                          "render the README text for this build, but it will "
+                          "likely not look right.")
+
+    def save_artifacts(self):
+        if os.path.isdir(self.artifacts_dir):
+            shutil.rmtree(self.artifacts_dir)
+        os.mkdir(self.artifacts_dir)
+
+        # pkg
+        shutil.move(self.built_pkg, self.artifacts_dir)
+        # SHA256
+        with open(os.path.join(self.artifacts_dir, 'SHA256'), 'w') as fd:
+            fd.write(self.sha256)
+        # build.log
+        with open(os.path.join(self.artifacts_dir, 'build.log'), 'w') as fd:
+            fd.write(self.build_log)
+        # README
+        with open(os.path.join(self.artifacts_dir, 'README.html'), 'w') as fd:
+            fd.write(self.readme_text)
+
+        self.artifact_list = [
+            'SHA256',
+            'build.log',
+            'README.html',
+            os.path.basename(self.built_pkg)
+        ]
+        self.log.info("Artifacts stashed in %s: %s",
+                      self.artifacts_dir,
+                      ', '.join(os.listdir(self.artifacts_dir)))
+
+    def deploy(self, ssh_id_file):
+        remote_dst_root = '/var/www/munkibuilds.org'
+
+        # nuke the root path for this version/branch tree
+        tree_root = os.path.join(self.artifacts_dir, 'tree')
+        if os.path.exists(tree_root):
+            shutil.rmtree(tree_root)
+
+        # tree will look like:
+        # - 3.6.0.1234/3.6.0.1234.pkg if master,
+        # - _branches/foo/3.6.0.1234/3.6.0.1234.pkg if some other branch
+        rsync_tree = self.dist_pkg_version
+        if self.branch != 'master':
+            rsync_tree = "_branches/%s/%s" % (
+                self.branch, self.dist_pkg_version)
+
+        # actually make the tree for this build and move artifacts there
+        self.log.info("Creating dir tree for rsync: %s" % os.path.join(tree_root, rsync_tree))
+        os.makedirs(os.path.join(tree_root, rsync_tree))
+        for a in self.artifact_list:
+            os.rename(
+                os.path.join(self.artifacts_dir, a),
+                os.path.join(tree_root, rsync_tree, a))
+
+        ssh_id_file = os.path.abspath(ssh_id_file)
+        rsync_cmd = [
+            'rsync', '-avz',
+            '-e', 'ssh -i %s' % ssh_id_file,
+            '.',
+            '%s:%s/' % (SSH_HOST, remote_dst_root)]
+        self.log.info("Running rsync command: %s", " ".join(rsync_cmd))
+        out = check_output(rsync_cmd, cwd=os.path.abspath(tree_root))
+        self.log.info("Rsync output:\n%s", out)
+
+        # if this build is on the master branch, symlink this pkg file to
+        # 'munkitools3-latest.pkg' at the root
+        if self.branch == 'master':
+            symlink_cmd = "bash -c 'cd %s && ln -sf %s/%s munkitools3-latest.pkg'" % (
+                remote_dst_root, rsync_tree, os.path.basename(self.built_pkg))
+            ssh_cmd = [
+                'ssh',
+                '-i', ssh_id_file,
+                SSH_HOST,
+                symlink_cmd]
+
+            self.log.info("Symlinking master build: %s", " ".join(rsync_cmd))
+            out = check_output(ssh_cmd, cwd=os.path.abspath(tree_root))
+
+
+def main():
+
+    deploy = False
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--deploy-ssh-id-file',
+                        help=('Path to an SSH identity file to use for deploying '
+                              'via SSH/rsync.'))
+    args = parser.parse_args()
+    if args.deploy_ssh_id_file:
+        ssh_id_file = os.path.abspath(args.deploy_ssh_id_file)
+        if not os.path.exists(ssh_id_file):
+            sys.exit("SSH identity at %s not found or is not readable, exiting"
+                     % ssh_id_file)
+        deploy = True
+
+    s = MunkiBuildSession()
+
+    s.build_pkg()
+
+    s.render_readme_template()
+
+    s.save_artifacts()
+
+    if deploy:
+        s.deploy(ssh_id_file)
+
+
+if __name__ == '__main__':
+    main()

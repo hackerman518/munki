@@ -1,0 +1,7 @@
+#!/bin/bash
+#
+# Prints out some status info about the build environment for diagnostic purposes.
+
+system_profiler SPHardwareDataType
+
+xcodebuild -showsdks

@@ -1,0 +1,26 @@
+name: Build and publish munkitools package
+
+on:
+  push:
+
+jobs:
+
+  build:
+ 
+    runs-on: macOS-10.14
+ 
+    steps:
+    - uses: actions/checkout@v1
+
+    - name: 
+
+    - name: Setup
+      run: ./code/tools/ci/setup
+      env:
+        MUNKIBUILDS_SSH_DEPLOY_KEY: ${{ secrets.munkibuilds_ssh_deploy_key }}
+
+    - name: Build and publish
+      run: ./code/tools/ci/build --deploy-ssh-id-file munkibuilds_ssh_deploy_key
+
+    - name: Clean
+      run: rm -P -f munkibuilds_ssh_deploy_key
