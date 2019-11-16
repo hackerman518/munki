@@ -1,0 +1,27 @@
+name: Build and publish munkitools package
+
+on:
+  push:
+
+jobs:
+
+  build:
+ 
+    # See this article for the list of macOS and Xcode versions available:
+    # https://help.github.com/en/actions/automating-your-workflow-with-github-actions/software-installed-on-github-hosted-runners
+    runs-on: macOS-10.15
+ 
+    steps:
+    - uses: actions/checkout@v1
+
+    - name: Setup
+      run: ./code/tools/ci/setup
+      env:
+        MUNKIBUILDS_SSH_DEPLOY_KEY: ${{ secrets.munkibuilds_ssh_deploy_key }}
+        XCODE_VERSION: '11.2'
+
+    - name: Build and publish
+      run: ./code/tools/ci/build --deploy-ssh-id-file munkibuilds_ssh_deploy_key
+
+    - name: Clean
+      run: rm -P -f munkibuilds_ssh_deploy_key
