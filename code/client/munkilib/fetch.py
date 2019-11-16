@@ -19,6 +19,7 @@ fetch.py
 Created by Greg Neagle on 2011-09-29.
 
 """
+from __future__ import absolute_import, print_function
 
 # standard libs
 import calendar
@@ -27,9 +28,20 @@ import imp
 import os
 import shutil
 import time
-import urllib2
-import urlparse
 import xattr
+
+try:
+    # Python 2
+    from urllib2 import unquote
+except ImportError:
+    # Python 3
+    from urllib.parse import unquote
+try:
+    # Python 2
+    from urlparse import urlparse, urlsplit
+except ImportError:
+    # Python 3
+    from urllib.parse import urlparse, urlsplit
 
 # Cocoa libs via PyObjC
 # PyLint cannot properly find names inside Cocoa libraries, so issues bogus
@@ -153,8 +165,7 @@ def getxattr(pathname, attr):
     """Get a named xattr from a file. Return None if not present"""
     if attr in xattr.listxattr(pathname):
         return xattr.getxattr(pathname, attr)
-    else:
-        return None
+    return None
 
 
 def writeCachedChecksum(file_path, fhash=None):
@@ -164,7 +175,7 @@ def writeCachedChecksum(file_path, fhash=None):
     if not fhash:
         fhash = munkihash.getsha256hash(file_path)
     if len(fhash) == 64:
-        xattr.setxattr(file_path, XATTR_SHA, fhash)
+        xattr.setxattr(file_path, XATTR_SHA, fhash.encode("UTF-8"))
         return fhash
     return None
 
@@ -269,14 +280,14 @@ def get_url(url, destinationpath,
         # safely kill the connection then re-raise
         connection.cancel()
         raise
-    except Exception, err:  # too general, I know
+    except Exception as err:  # too general, I know
         # Let us out! ... Safely! Unexpectedly quit dialogs are annoying...
         connection.cancel()
         # Re-raise the error as a GurlError
         raise GurlError(-1, str(err))
 
     if connection.error is not None:
-        # Gurl returned an error
+        # gurl returned an error
         display.display_detail(
             'Download error %s: %s', connection.error.code(),
             connection.error.localizedDescription())
@@ -305,7 +316,7 @@ def get_url(url, destinationpath,
     if str(connection.status).startswith('2') and temp_download_exists:
         try:
             os.rename(tempdownloadpath, destinationpath)
-        except OSError, err:
+        except OSError as err:
             # Re-raise the error as a GurlError
             raise GurlError(-1, str(err))
         return connection.headers
@@ -351,11 +362,12 @@ def getResourceIfChangedAtomically(url,
     # If we already have a downloaded file & its (cached) hash matches what
     # we need, do nothing, return unchanged.
     if resume and expected_hash and os.path.isfile(destinationpath):
-        xattr_hash = getxattr(destinationpath, XATTR_SHA)
+        xattr_hash = getxattr(destinationpath, XATTR_SHA).decode('UTF-8')
         if not xattr_hash:
             xattr_hash = writeCachedChecksum(destinationpath)
         if xattr_hash == expected_hash:
             #File is already current, no change.
+            munkilog.log("        Cached item is current.")
             return False
         elif prefs.pref(
                 'PackageVerificationMode').lower() in ['hash_strict', 'hash']:
@@ -363,7 +375,7 @@ def getResourceIfChangedAtomically(url,
                 os.unlink(destinationpath)
             except OSError:
                 pass
-        munkilog.log('Cached payload does not match hash in catalog, '
+        munkilog.log('Cached item does not match hash in catalog, '
                      'will check if changed and redownload: %s'
                      % destinationpath)
         # continue with normal if-modified-since/etag update methods.
@@ -373,7 +385,7 @@ def getResourceIfChangedAtomically(url,
         # the preference decides
         follow_redirects = prefs.pref('FollowHTTPRedirects')
 
-    url_parse = urlparse.urlparse(url)
+    url_parse = urlparse(url)
     if url_parse.scheme in ['http', 'https']:
         changed = getHTTPfileIfChangedAtomically(
             url, destinationpath,
@@ -436,7 +448,7 @@ def getFileIfChangedAtomically(path, destinationpath):
        item is already in the local cache.
 
        Raises FileCopyError if there is an error."""
-    path = urllib2.unquote(path)
+    path = unquote(path)
     try:
         st_src = os.stat(path)
     except OSError:
@@ -460,7 +472,7 @@ def getFileIfChangedAtomically(path, destinationpath):
     try:
         if st_dst:
             os.unlink(tmp_destinationpath)
-    except OSError, err:
+    except OSError as err:
         if err.args[0] == errno.ENOENT:
             pass  # OK
         else:
@@ -470,13 +482,13 @@ def getFileIfChangedAtomically(path, destinationpath):
     # copy from source to temporary destination
     try:
         shutil.copy2(path, tmp_destinationpath)
-    except IOError, err:
+    except IOError as err:
         raise FileCopyError('Copy IOError: %s' % str(err))
 
     # rename temp destination to final destination
     try:
         os.rename(tmp_destinationpath, destinationpath)
-    except OSError, err:
+    except OSError as err:
         raise FileCopyError('Renaming %s: %s' % (destinationpath, str(err)))
 
     return True
@@ -517,12 +529,12 @@ def getHTTPfileIfChangedAtomically(url, destinationpath,
         # them as GurlDownloadError
         raise
 
-    except HTTPError, err:
-        err = 'HTTP result %s: %s' % tuple(err)
+    except HTTPError as err:
+        err = 'HTTP result %s: %s' % (err.args[0], err.args[1])
         raise GurlDownloadError(err)
 
-    except GurlError, err:
-        err = 'Error %s: %s' % tuple(err)
+    except GurlError as err:
+        err = 'Error %s: %s' % (err.args[0], err.args[1])
         raise GurlDownloadError(err)
 
     err = None
@@ -554,7 +566,7 @@ def getURLitemBasename(url):
          "/path/foo.dmg" => "foo.dmg"
     """
 
-    url_parse = urlparse.urlparse(url)
+    url_parse = urlparse(url)
     return os.path.basename(url_parse.path)
 
 
@@ -600,22 +612,22 @@ def verifySoftwarePackageIntegrity(file_path, item_hash, always_hash=False):
                 chash = munkihash.getsha256hash(file_path)
             if item_hash == chash:
                 return (True, chash)
-            else:
-                display.display_error(
-                    'Hash value integrity check for %s failed.' %
-                    item_name)
-                return (False, chash)
+            # item_hash != chash
+            display.display_error(
+                'Hash value integrity check for %s failed.' %
+                item_name)
+            return (False, chash)
         else:
             if mode.lower() == 'hash_strict':
                 display.display_error(
                     'Reference hash value for %s is missing in catalog.'
                     % item_name)
                 return (False, chash)
-            else:
-                display.display_warning(
-                    'Reference hash value missing for %s -- package '
-                    'integrity verification skipped.' % item_name)
-                return (True, chash)
+            # mode.lower() != 'hash_strict'
+            display.display_warning(
+                'Reference hash value missing for %s -- package '
+                'integrity verification skipped.' % item_name)
+            return (True, chash)
     else:
         display.display_error(
             'The PackageVerificationMode in the ManagedInstalls.plist has an '
@@ -632,7 +644,7 @@ def getDataFromURL(url):
     if os.path.exists(urldata):
         try:
             os.unlink(urldata)
-        except (IOError, OSError), err:
+        except (IOError, OSError) as err:
             display.display_warning('Error in getDataFromURL: %s', err)
     dummy_result = munki_resource(url, urldata)
     try:
@@ -641,7 +653,7 @@ def getDataFromURL(url):
         fdesc.close()
         os.unlink(urldata)
         return data
-    except (IOError, OSError), err:
+    except (IOError, OSError) as err:
         display.display_warning('Error in getDataFromURL: %s', err)
         return ''
 
@@ -654,7 +666,7 @@ def check_server(url):
     # rewritten 12 Dec 2016 to use gurl so we use system proxies, if any
 
     # deconstruct URL to get scheme
-    url_parts = urlparse.urlsplit(url)
+    url_parts = urlsplit(url)
     if url_parts.scheme in ('http', 'https'):
         pass
     elif url_parts.scheme == 'file':
@@ -662,8 +674,7 @@ def check_server(url):
             return (-1, 'Non-local hostnames not supported for file:// URLs')
         if os.path.exists(url_parts.path):
             return (0, 'OK')
-        else:
-            return (-1, 'Path %s does not exist' % url_parts.path)
+        return (-1, 'Path %s does not exist' % url_parts.path)
     else:
         return (-1, 'Unsupported URL scheme')
 
@@ -671,9 +682,9 @@ def check_server(url):
     try:
         # attempt to get something at the url
         dummy_data = getDataFromURL(url)
-    except ConnectionError, err:
-        # err should contain a tuple with code and description
-        return (err[0], err[1])
+    except ConnectionError as err:
+        # err.args should contain a tuple with code and description
+        return (err.args[0], err.args[1])
     except (GurlError, DownloadError):
         # HTTP errors, etc are OK -- we just need to be able to connect
         pass
@@ -681,4 +692,4 @@ def check_server(url):
 
 
 if __name__ == '__main__':
-    print 'This is a library of support tools for the Munki Suite.'
+    print('This is a library of support tools for the Munki Suite.')

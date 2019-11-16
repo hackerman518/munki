@@ -21,7 +21,9 @@ Created by Greg Neagle on 2016-12-14.
 
 Logging functions for Munki
 """
+from __future__ import absolute_import, print_function
 
+import codecs
 import logging
 import logging.handlers
 import os
@@ -50,9 +52,9 @@ def log(msg, logname=''):
     else:
         logpath = os.path.join(os.path.dirname(prefs.pref('LogFile')), logname)
     try:
-        fileobj = open(logpath, mode='a', buffering=1)
+        fileobj = codecs.open(logpath, mode='a', buffering=1, encoding='UTF-8')
         try:
-            print >> fileobj, time.strftime(formatstr), msg.encode('UTF-8')
+            fileobj.write("%s %s\n" % (time.strftime(formatstr), msg))
         except (OSError, IOError):
             pass
         fileobj.close()
@@ -130,4 +132,4 @@ def reset_errors():
 
 
 if __name__ == '__main__':
-    print 'This is a library of support tools for the Munki Suite.'
+    print('This is a library of support tools for the Munki Suite.')

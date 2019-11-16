@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/local/munki/python
 # encoding: utf-8
 #
 # Copyright 2011-2019 Greg Neagle.
@@ -23,6 +23,7 @@ A helper tool for forced logouts to allow munki to force install items by
 a certain deadline.
 
 """
+from __future__ import absolute_import
 
 # standard libs
 import os
