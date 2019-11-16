@@ -7,9 +7,11 @@ jobs:
 
   build:
  
-    # See this article for the list of macOS and Xcode versions available:
+    # Supported runner environments:
+    # https://help.github.com/en/actions/automating-your-workflow-with-github-actions/virtual-environments-for-github-hosted-runners#supported-runners-and-hardware-resources
+    # ..and the list of macOS and Xcode versions available:
     # https://help.github.com/en/actions/automating-your-workflow-with-github-actions/software-installed-on-github-hosted-runners
-    runs-on: macOS-10.15
+    runs-on: macos-latest
  
     steps:
     - uses: actions/checkout@v1
