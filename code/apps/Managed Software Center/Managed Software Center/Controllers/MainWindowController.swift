@@ -3,7 +3,7 @@
 //  Managed Software Center
 //
 //  Created by Greg Neagle on 6/29/18.
-//  Copyright © 2018-2019 The Munki Project. All rights reserved.
+//  Copyright © 2018-2020 The Munki Project. All rights reserved.
 //
 
 import Cocoa
@@ -247,7 +247,7 @@ class MainWindowController: NSWindowController, NSWindowDelegate, WKNavigationDe
                     comment: "Cannot Contact Server detail")
             } else if lastCheckResult == -2 {
                 // preflight failed
-                msc_log("MSU", "cant_update", msg: "failed preflight")
+                msc_log("MSC", "cant_update", msg: "failed preflight")
                 detailText = NSLocalizedString(
                     ("Managed Software Center cannot check for updates now.\n" +
                      "Try again later. If this situation continues, " +

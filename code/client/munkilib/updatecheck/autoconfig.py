@@ -1,6 +1,6 @@
 # encoding: utf-8
 #
-# Copyright 2018-2019 Greg Neagle.
+# Copyright 2018-2020 Greg Neagle.
 #
 # Licensed under the Apache License, Version 2.0 (the 'License');
 # you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@ Created by Greg Neagle on 2018-04-17.
 
 Functions for automatically discovering and configuring some Munki settings.
 """
+from __future__ import absolute_import, print_function
+
 # Apple frameworks via PyObjC
 # PyLint cannot properly find names inside Cocoa libraries, so issues bogus
 # No name 'Foo' in module 'Bar' warnings. Disable them.
@@ -72,7 +74,7 @@ def guess_repo_url():
             fetch.getDataFromURL(url + '/catalogs/all')
             autodetected_url = url
             break
-        except fetch.Error, err:
+        except fetch.Error as err:
             # couldn't connect or other error
             display.display_info('URL error: %s', err)
 
@@ -80,9 +82,10 @@ def guess_repo_url():
 
 
 def autodetect_repo_url_if_needed():
-    '''If Munki repo URL is not defined, attempt to discover one. If successful,
-    record the discovered URL in Munki's preferences.'''
-    if prefs.pref('SoftwareRepoURL'):
+    '''If Munki repo URL is not defined, (or is the insecure default) attempt
+    to discover one. If successful, record the discovered URL in Munki's
+    preferences.'''
+    if prefs.pref('SoftwareRepoURL') not in (None, prefs.DEFAULT_INSECURE_REPO_URL):
         # SoftwareRepoURL key is defined. exit.
         return
     all_keys_defined = True
@@ -107,4 +110,4 @@ def autodetect_repo_url_if_needed():
 
 
 if __name__ == '__main__':
-    print 'This is a library of support tools for the Munki Suite.'
+    print('This is a library of support tools for the Munki Suite.')

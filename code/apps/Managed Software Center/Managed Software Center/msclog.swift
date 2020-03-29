@@ -3,7 +3,7 @@
 //  Managed Software Center
 //
 //  Created by Greg Neagle on 6/6/18.
-//  Copyright © 2018-2019 The Munki Project. All rights reserved.
+//  Copyright © 2018-2020 The Munki Project. All rights reserved.
 //
 
 import Foundation
@@ -88,7 +88,8 @@ func setup_logging() {
 func msc_log(_ source: String, _ event: String, msg: String = "") {
     // Log an event from a source.
     if MSULOGFILE != "" {
-        let logString = "\(source): \(event)  \(msg)\n"
+        let datestamp = NSDate().timeIntervalSince1970
+        let logString = "\(datestamp) \(source): \(event)  \(msg)\n"
         if let logData = logString.data(using: String.Encoding.utf8) {
             if let fh = FileHandle(forUpdatingAtPath: MSULOGFILE) {
                 let _ = fh.seekToEndOfFile()

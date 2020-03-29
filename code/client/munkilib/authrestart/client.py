@@ -1,6 +1,6 @@
 # encoding: utf-8
 #
-# Copyright 2017-2019 Greg Neagle.
+# Copyright 2017-2020 Greg Neagle.
 #
 # Licensed under the Apache License, Version 2.0 (the 'License');
 # you may not use this file except in compliance with the License.
@@ -21,13 +21,14 @@ Created by Greg Neagle on 2017-04-15.
 Routines for communicating with authrestartd.
 Socket communications code adapted from autopkg's PkgCreator by Per Olofsson
 """
+from __future__ import absolute_import, print_function
 
 import os
-import plistlib
 import select
 import socket
-import sys
 
+from .. import prefs
+from ..wrappers import writePlistToString
 
 AUTHRESTARTD_SOCKET = "/var/run/authrestartd"
 
@@ -52,19 +53,17 @@ class AuthRestartClient(object):
 
     def send_request(self, request):
         '''Send a request to authrestartd'''
-        self.socket.send(plistlib.writePlistToString(request))
-        with os.fdopen(self.socket.fileno()) as fileref:
-            # use select so we don't hang indefinitely if authrestartd dies
-            ready = select.select([fileref], [], [], 2)
-            if ready[0]:
-                reply = fileref.read()
-            else:
-                reply = ''
+        self.socket.send(writePlistToString(request))
+        # use select so we don't hang indefinitely if authrestartd dies
+        ready = select.select([self.socket.fileno()], [], [], 2)
+        if ready[0]:
+            reply = self.socket.recv(8192).decode("UTF-8")
+        else:
+            reply = ''
 
         if reply:
             return reply.rstrip()
-        else:
-            return "ERROR:No reply"
+        return "ERROR:No reply"
 
     def disconnect(self):
         '''Disconnect from authrestartd'''
@@ -114,6 +113,13 @@ class AuthRestartClient(object):
     def restart(self):
         '''Returns True if restart was successful'''
         result = self.process({'task': 'restart'})
+        if not result.startswith('OK'):
+            raise AuthRestartClientError(result)
+
+    def setup_delayed_authrestart(self, delayminutes=-1):
+        '''Sets up a delayed auth restart'''
+        request = {'task': 'delayed_authrestart', 'delayminutes': delayminutes}
+        result = self.process(request)
         if not result.startswith('OK'):
             raise AuthRestartClientError(result)
 
@@ -174,27 +180,47 @@ def restart():
         return False
 
 
+def setup_delayed_authrestart():
+    '''Sets up a delayed authrestart.
+    Returns boolean to indicate success/failure'''
+    try:
+        AuthRestartClient().setup_delayed_authrestart()
+        return True
+    except AuthRestartClientError:
+        return False
+
+
 def test():
+    '''A function for doing some basic testing'''
     import getpass
     import pwd
-    
-    print 'FileVault is active: %s' % fv_is_active()
-    print 'Recovery key is present: %s' % verify_recovery_key_present()
+    from ..wrappers import get_input
+
+    print('PerformAuthRestarts preference is: %s'
+          % prefs.pref('PerformAuthRestarts'))
+    print('FileVault is active: %s' % fv_is_active())
+    print('Recovery key is present: %s' % verify_recovery_key_present())
     username = pwd.getpwuid(os.getuid()).pw_name
-    print '%s is FV user: %s' % (username, verify_user(username))
+    if username == 'root':
+        username = get_input('Enter name of FV-enabled user: ')
+    print('%s is FV user: %s' % (username, verify_user(username)))
     password = getpass.getpass('Enter password: ')
     if password:
         if username == 'root':
             username = None
         if store_password(password, username=username):
-            print 'store_password was successful'
+            print('store_password was successful')
         else:
-            print 'store_password failed'
-    print 'Can attempt auth restart: %s' % verify_can_attempt_auth_restart()
-    answer = raw_input('Test auth restart (y/n)? ')
+            print('store_password failed')
+    print('Can attempt auth restart: %s' % verify_can_attempt_auth_restart())
+    answer = get_input('Test setup of delayed auth restart (y/n)? ')
     if answer.lower().startswith('y'):
-        print 'Attempting auth restart...'
+        print('Successfully set up delayed authrestart: %s'
+              % setup_delayed_authrestart())
+    answer = get_input('Test auth restart (y/n)? ')
+    if answer.lower().startswith('y'):
+        print('Attempting auth restart...')
         if restart():
-            print 'restart was successfully triggered'
+            print('restart was successfully triggered')
         else:
-            print 'restart failed'
+            print('restart failed')

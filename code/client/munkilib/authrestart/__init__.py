@@ -1,6 +1,6 @@
 # encoding: utf-8
 #
-# Copyright 2009-2019 Greg Neagle.
+# Copyright 2009-2020 Greg Neagle.
 #
 # Licensed under the Apache License, Version 2.0 (the 'License');
 # you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ Initial work by Wes Whetstone, Summer/Fall 2016
 
 Functions supporting FileVault authrestart.
 """
+from __future__ import absolute_import, print_function
 
 import subprocess
 
@@ -37,10 +38,11 @@ def filevault_is_active():
     active_cmd = ['/usr/bin/fdesetup', 'isactive']
     try:
         is_active = subprocess.check_output(
-            active_cmd, stderr=subprocess.STDOUT)
+            active_cmd, stderr=subprocess.STDOUT).decode('UTF-8')
     except subprocess.CalledProcessError as exc:
-        if exc.output and 'false' in exc.output:
-            display.display_warning('FileVault appears to be disabled...')
+        if exc.output and 'false' in exc.output.decode('UTF-8'):
+            # fdesetup isactive returns 1 when FileVault is not active
+            display.display_debug1('FileVault appears to be disabled...')
         elif not exc.output:
             display.display_warning(
                 'Encountered problem determining FileVault status...')
@@ -48,7 +50,9 @@ def filevault_is_active():
             display.display_warning(exc.output)
         return False
     if 'true' in is_active:
+        display.display_debug1('FileVault appears to be enabled...')
         return True
+    display.display_debug1('Could not confirm FileVault is enabled...')
     return False
 
 
@@ -61,7 +65,7 @@ def supports_auth_restart():
     support_cmd = ['/usr/bin/fdesetup', 'supportsauthrestart']
     try:
         is_supported = subprocess.check_output(
-            support_cmd, stderr=subprocess.STDOUT)
+            support_cmd, stderr=subprocess.STDOUT).decode('UTF-8')
     except subprocess.CalledProcessError as exc:
         if exc.output:
             display.display_warning(exc.output)
@@ -72,9 +76,9 @@ def supports_auth_restart():
     if 'true' in is_supported:
         display.display_debug1('FileVault supports AuthRestart...')
         return True
-    else:
-        display.display_warning('FileVault AuthRestart is not supported...')
-        return False
+
+    display.display_warning('FileVault AuthRestart is not supported...')
+    return False
 
 
 def is_fv_user(username):
@@ -82,7 +86,8 @@ def is_fv_user(username):
     authorized users"""
     cmd = ['/usr/bin/fdesetup', 'list']
     try:
-        userlist = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+        userlist = subprocess.check_output(
+            cmd, stderr=subprocess.STDOUT).decode('UTF-8')
     except subprocess.CalledProcessError:
         return False
     # output is in the format
@@ -143,7 +148,7 @@ def can_attempt_auth_restart(have_password=False):
             (get_auth_restart_key(quiet=True) != '' or have_password))
 
 
-def perform_auth_restart(username=None, password=None):
+def perform_auth_restart(username=None, password=None, delayminutes=0):
     """When called this will perform an authorized restart. Before trying
     to perform an authorized restart it checks to see if the machine supports
     the feature. If supported it will look for the defined plist containing
@@ -164,21 +169,30 @@ def perform_auth_restart(username=None, password=None):
     if username:
         keys['Username'] = username
     inputplist = FoundationPlist.writePlistToString(keys)
-    display.display_info('Attempting an Authorized Restart now...')
+    if delayminutes == 0:
+        display.display_info('Attempting an Authorized Restart now...')
+    else:
+        display.display_info('Configuring a delayed Authorized Restart...')
+    os_version_tuple = osutils.getOsVersion(as_tuple=True)
+    if os_version_tuple >= (10, 12):
+        cmd = ['/usr/bin/fdesetup', 'authrestart',
+               '-delayminutes', str(delayminutes), '-inputplist']
+    else:
+        cmd = ['/usr/bin/fdesetup', 'authrestart', '-inputplist']
     proc = subprocess.Popen(
-        ['/usr/bin/fdesetup', 'authrestart', '-inputplist'],
+        cmd,
         stdout=subprocess.PIPE,
         stdin=subprocess.PIPE,
-        stderr=subprocess.PIPE)
-    err = proc.communicate(input=inputplist)[1]
-    os_version_tuple = osutils.getOsVersion(as_tuple=True)
+        stderr=subprocess.PIPE
+    )
+    err = proc.communicate(input=inputplist)[1].decode('UTF-8')
     if os_version_tuple >= (10, 12) and 'System is being restarted' in err:
         return True
     if err:
         display.display_error(err)
         return False
-    else:
-        return True
+    # no error, so I guess we're successful
+    return True
 
 
 def do_authorized_or_normal_restart(username=None,
@@ -214,4 +228,4 @@ def do_authorized_or_normal_restart(username=None,
 
 
 if __name__ == '__main__':
-    print 'This is a library of support tools for the Munki Suite.'
+    print('This is a library of support tools for the Munki Suite.')

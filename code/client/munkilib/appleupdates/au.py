@@ -1,6 +1,6 @@
 # encoding: utf-8
 #
-# Copyright 2009-2019 Greg Neagle.
+# Copyright 2009-2020 Greg Neagle.
 #
 # Licensed under the Apache License, Version 2.0 (the 'License');
 # you may not use this file except in compliance with the License.
@@ -20,12 +20,19 @@ Created by Greg Neagle on 2017-01-06.
 
 AppleUpdates object defined here
 """
+from __future__ import absolute_import, print_function
 
 import glob
 import hashlib
 import os
 import subprocess
-import urllib2
+
+try:
+    # Python 2
+    from urllib2 import quote
+except ImportError:
+    # Python 3
+    from urllib.parse import quote
 
 # PyLint cannot properly find names inside Cocoa libraries, so issues bogus
 # No name 'Foo' in module 'Bar' warnings. Disable them.
@@ -222,7 +229,7 @@ class AppleUpdates(object):
         proc = subprocess.Popen(cmd, shell=False, bufsize=1,
                                 stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        output, dummy_err = proc.communicate()
+        output = proc.communicate()[0] # don't decode because we need the bytes
 
         current_apple_packages_checksum = hashlib.sha256(output).hexdigest()
         old_apple_packages_checksum = prefs.pref(
@@ -282,7 +289,7 @@ class AppleUpdates(object):
         except (sync.ReplicationError, fetch.Error) as err:
             display.display_warning(
                 'Could not download Apple SUS catalog:')
-            display.display_warning('\t%s', unicode(err))
+            display.display_warning(u'\t%s', err)
             return False
 
         if not force_check and not self._force_check_necessary(before_hash):
@@ -305,7 +312,7 @@ class AppleUpdates(object):
             except sync.ReplicationError as err:
                 display.display_warning(
                     'Could not replicate software update metadata:')
-                display.display_warning('\t%s', unicode(err))
+                display.display_warning(u'\t%s', err)
                 return False
             return True
         else:
@@ -565,7 +572,7 @@ class AppleUpdates(object):
                     'Missing local Software Update catalog at %s',
                     self.applesync.local_catalog_path)
                 return False  # didn't do anything, so no restart needed
-            catalog_url = 'file://localhost' + urllib2.quote(
+            catalog_url = 'file://localhost' + quote(
                 self.applesync.local_catalog_path)
 
         su_start_date = NSDate.new()
@@ -823,4 +830,4 @@ class AppleUpdates(object):
 
 
 if __name__ == '__main__':
-    print 'This is a library of support tools for the Munki Suite.'
+    print('This is a library of support tools for the Munki Suite.')
